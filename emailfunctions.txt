@@ -1,0 +1,61 @@
+--emailfunctions send mail function
+public static void PatientEmailVarification(string name, string toEmail, string emailToken)
+        {
+            var emailHelper = new EmailHelper
+            {
+                Body = EmailHelper.GenerateEmailTemplateWithfull(
+                    CommonFunctions.GetPhysicalApplicationPath() + "\\EmailTemplates\\WebForgetPassword.html",
+                    new MessageKeyValue("##Name##", name),
+                    new MessageKeyValue("##ImagePath##", System.Web.Configuration.WebConfigurationManager.AppSettings["SitePath"]),
+                    new MessageKeyValue("##Year##", DateTime.Now.Year.ToString()),
+                    new MessageKeyValue("##ResetCode##",
+                        System.Web.Configuration.WebConfigurationManager.AppSettings["Sitepath"] +
+                        "Account/ActivateAccountPatient?token=" + emailToken)),
+                Recipient = toEmail,
+                RecipientBCC = System.Web.Configuration.WebConfigurationManager.AppSettings["RecipientBCC"],
+                AttachmentFile = new List<string>(),
+                Subject = ResourceString.ForgetPassword,
+                SenderName = System.Web.Configuration.WebConfigurationManager.AppSettings["MailFromName"],
+                Sender = System.Web.Configuration.WebConfigurationManager.AppSettings["EmailFromAddress"]
+            };
+            emailHelper.Send();
+        }
+---outer accountcontroler
+
+public ActionResult ActivateAccountPatient(string emailToken)
+        {
+            var response = _accountRepositor.AcivateAccountPatient(emailToken);
+            if (response.ResponseCode == (short)ResponseMsg.Ok)
+            {
+                ViewBag.Response = response;
+                return View();
+            }
+            else
+            {
+                TempData["Response"] = response;
+                return RedirectToAction("Index", "Home");
+            }
+        }
+
+--accountRepositry.cs
+
+ public ApiResponses<bool> AcivateAccountPatient(string emailToken)
+        {
+            if (string.IsNullOrEmpty(emailToken))
+            {
+                return new ApiResponses<bool>(ResponseMsg.ValidationFailed, false, _errors, failureMsg: ResourceString.VerificationCodeCanNotBeBlank);
+            }
+
+            using (var db = new MobileMDAppDemoEntities())
+            {
+                var account = db.UserMasters.FirstOrDefault(s => s.EmailVerificationToken == emailToken);
+                if (account == null)
+                    return new ApiResponses<bool>(ResponseMsg.Error, false, _errors, failureMsg: ResourceString.VerificationCodeExpired);
+
+                account.IsEmailVerified = true;
+                account.IsActive = true;
+                account.EmailVerificationToken = null;
+                db.SaveChanges();
+                return new ApiResponses<bool>(ResponseMsg.Ok, true, _errors, successMsg: ResourceString.AccountVerifiedSuccessfully);
+            }
+        }
